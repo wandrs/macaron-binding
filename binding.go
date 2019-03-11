@@ -29,6 +29,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/gorilla/schema"
 	"github.com/unknwon/com"
 	"gopkg.in/macaron.v1"
 	"gopkg.in/yaml.v3"
@@ -199,16 +200,36 @@ func MultipartForm(formStruct interface{}, ifacePtr ...interface{}) macaron.Hand
 // validated, but no error handling is actually performed here.
 // An interface pointer can be added as a second argument in order
 // to map the struct to a specific interface.
+//
+// For all requests, Json parses the raw query from the URL using matching struct json tags.
+//
+// For POST, PUT, and PATCH requests, it also parses the request body.
+// Request body parameters take precedence over URL query string values.
+//
+// Json follows the Request.ParseForm() method from Go's net/http library.
+// ref: https://github.com/golang/go/blob/700e969d5b23732179ea86cfe67e8d1a0a1cc10a/src/net/http/request.go#L1176
 func Json(jsonStruct interface{}, ifacePtr ...interface{}) macaron.Handler {
 	return func(ctx *macaron.Context) {
 		var errors Errors
 		ensureNotPointer(jsonStruct)
 		jsonStruct := reflect.New(reflect.TypeOf(jsonStruct))
-		if ctx.Req.Request.Body != nil {
-			defer ctx.Req.Request.Body.Close()
-			err := json.NewDecoder(ctx.Req.Request.Body).Decode(jsonStruct.Interface())
-			if err != nil && err != io.EOF {
-				errors.Add([]string{}, ERR_DESERIALIZATION, err.Error())
+		if ctx.Req.URL != nil {
+			if params := ctx.Req.URL.Query(); len(params) > 0 {
+				d := schema.NewDecoder()
+				d.SetAliasTag("json")
+				err := d.Decode(jsonStruct.Interface(), params)
+				if err != nil && err != io.EOF {
+					errors.Add([]string{}, ERR_DESERIALIZATION, err.Error())
+				}
+			}
+		}
+		if ctx.Req.Method == "POST" || ctx.Req.Method == "PUT" || ctx.Req.Method == "PATCH" {
+			if ctx.Req.Request.Body != nil {
+				v := jsonStruct.Interface()
+				err := json.NewDecoder(ctx.Req.Request.Body).Decode(v)
+				if err != nil && err != io.EOF {
+					errors.Add([]string{}, ERR_DESERIALIZATION, err.Error())
+				}
 			}
 		}
 		if errors != nil {
@@ -323,8 +344,10 @@ var (
 )
 
 // Copied from github.com/asaskevich/govalidator.
-const _MAX_URL_RUNE_COUNT = 2083
-const _MIN_URL_RUNE_COUNT = 3
+const (
+	_MAX_URL_RUNE_COUNT = 2083
+	_MIN_URL_RUNE_COUNT = 3
+)
 
 var (
 	urlSchemaRx    = `((ftp|tcp|udp|wss?|https?):\/\/)`
@@ -353,7 +376,6 @@ func isURL(str string) bool {
 		return false
 	}
 	return URLPattern.MatchString(str)
-
 }
 
 type (
@@ -379,8 +401,10 @@ type (
 	ParamRuleMapper []*ParamRule
 )
 
-var ruleMapper RuleMapper
-var paramRuleMapper ParamRuleMapper
+var (
+	ruleMapper      RuleMapper
+	paramRuleMapper ParamRuleMapper
+)
 
 // AddRule adds new validation rule.
 func AddRule(r *Rule) {
@@ -615,21 +639,19 @@ VALIDATE_RULES:
 // NameMapper represents a form tag name mapper.
 type NameMapper func(string) string
 
-var (
-	nameMapper = func(field string) string {
-		newstr := make([]rune, 0, len(field))
-		for i, chr := range field {
-			if isUpper := 'A' <= chr && chr <= 'Z'; isUpper {
-				if i > 0 {
-					newstr = append(newstr, '_')
-				}
-				chr -= ('A' - 'a')
+var nameMapper = func(field string) string {
+	newstr := make([]rune, 0, len(field))
+	for i, chr := range field {
+		if isUpper := 'A' <= chr && chr <= 'Z'; isUpper {
+			if i > 0 {
+				newstr = append(newstr, '_')
 			}
-			newstr = append(newstr, chr)
+			chr -= ('A' - 'a')
 		}
-		return string(newstr)
+		newstr = append(newstr, chr)
 	}
-)
+	return string(newstr)
+}
 
 // SetNameMapper sets name mapper.
 func SetNameMapper(nm NameMapper) {
@@ -638,8 +660,8 @@ func SetNameMapper(nm NameMapper) {
 
 // Takes values from the form data and puts them into a struct
 func mapForm(formStruct reflect.Value, form map[string][]string,
-	formfile map[string][]*multipart.FileHeader, errors Errors) Errors {
-
+	formfile map[string][]*multipart.FileHeader, errors Errors,
+) Errors {
 	if formStruct.Kind() == reflect.Ptr {
 		formStruct = formStruct.Elem()
 	}
