@@ -30,8 +30,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/Unknwon/com"
-	"github.com/gogo/protobuf/jsonpb"
-	"github.com/gogo/protobuf/proto"
 	"github.com/gorilla/schema"
 	"gopkg.in/macaron.v1"
 )
@@ -223,12 +221,7 @@ func Json(jsonStruct interface{}, ifacePtr ...interface{}) macaron.Handler {
 		if ctx.Req.Method == "POST" || ctx.Req.Method == "PUT" || ctx.Req.Method == "PATCH" {
 			if ctx.Req.Request.Body != nil {
 				v := jsonStruct.Interface()
-				var e error
-				if pb, ok := v.(proto.Message); ok {
-					e = jsonpb.Unmarshal(ctx.Req.Request.Body, pb)
-				} else {
-					e = json.NewDecoder(ctx.Req.Request.Body).Decode(v)
-				}
+				e := json.NewDecoder(ctx.Req.Request.Body).Decode(v)
 				if err == nil {
 					err = e
 				}
