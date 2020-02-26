@@ -30,8 +30,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/Unknwon/com"
-	"github.com/golang/protobuf/jsonpb"
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/jsonpb"
+	"github.com/gogo/protobuf/proto"
 	"github.com/gorilla/schema"
 	"gopkg.in/macaron.v1"
 )
