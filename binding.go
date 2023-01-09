@@ -217,6 +217,7 @@ func Json(jsonStruct interface{}, ifacePtr ...interface{}) macaron.Handler {
 			if params := ctx.Req.URL.Query(); len(params) > 0 {
 				d := schema.NewDecoder()
 				d.SetAliasTag("json")
+				d.IgnoreUnknownKeys(true)
 				err := d.Decode(jsonStruct.Interface(), params)
 				if err != nil && err != io.EOF {
 					errors.Add([]string{}, ERR_DESERIALIZATION, err.Error())
