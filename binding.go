@@ -212,13 +212,13 @@ func Json(jsonStruct interface{}, ifacePtr ...interface{}) macaron.Handler {
 	return func(ctx *macaron.Context) {
 		var errors Errors
 		ensureNotPointer(jsonStruct)
-		jsonStruct := reflect.New(reflect.TypeOf(jsonStruct))
+		obj := reflect.New(reflect.TypeOf(jsonStruct))
 		if ctx.Req.URL != nil {
-			if params := ctx.Req.URL.Query(); len(params) > 0 {
+			if params := ctx.Req.URL.Query(); len(params) > 0 && isStruct(jsonStruct) {
 				d := schema.NewDecoder()
 				d.SetAliasTag("json")
 				d.IgnoreUnknownKeys(true)
-				err := d.Decode(jsonStruct.Interface(), params)
+				err := d.Decode(obj.Interface(), params)
 				if err != nil && err != io.EOF {
 					errors.Add([]string{}, ERR_DESERIALIZATION, err.Error())
 				}
@@ -226,7 +226,7 @@ func Json(jsonStruct interface{}, ifacePtr ...interface{}) macaron.Handler {
 		}
 		if ctx.Req.Method == "POST" || ctx.Req.Method == "PUT" || ctx.Req.Method == "PATCH" {
 			if ctx.Req.Request.Body != nil {
-				v := jsonStruct.Interface()
+				v := obj.Interface()
 				err := json.NewDecoder(ctx.Req.Request.Body).Decode(v)
 				if err != nil && err != io.EOF {
 					errors.Add([]string{}, ERR_DESERIALIZATION, err.Error())
@@ -237,7 +237,7 @@ func Json(jsonStruct interface{}, ifacePtr ...interface{}) macaron.Handler {
 			ctx.Map(errors)
 			return
 		}
-		validateAndMap(jsonStruct, ctx, errors, ifacePtr...)
+		validateAndMap(obj, ctx, errors, ifacePtr...)
 	}
 }
 
@@ -445,6 +445,10 @@ func validateStruct(errors Errors, obj interface{}) Errors {
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
 		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return errors // skip
 	}
 
 	for i := 0; i < typ.NumField(); i++ {
@@ -833,3 +837,14 @@ type (
 		Validate(*macaron.Context, Errors) Errors
 	}
 )
+
+func isStruct(obj interface{}) bool {
+	typ := reflect.TypeOf(obj)
+	val := reflect.ValueOf(obj)
+
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+		val = val.Elem()
+	}
+	return val.Kind() == reflect.Struct
+}
